@@ -1,0 +1,15 @@
+# Binários e build
+bin/
+dist/
+veracode-go-cli
+
+# Go
+*.test
+*.out
+go.work
+
+# OS / editores
+.DS_Store
+.idea/
+.vscode/
+*.swp

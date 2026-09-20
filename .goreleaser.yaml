@@ -1,0 +1,70 @@
+# GoReleaser v2 — releases versionadas com binários para GitHub Releases.
+# Docs: https://goreleaser.com/
+version: 2
+
+project_name: veracode-go-cli
+
+before:
+  hooks:
+    - go mod tidy
+    - go vet ./...
+    - go test ./...
+
+builds:
+  - id: veracode-go-cli
+    main: ./cmd/veracode-go-cli
+    binary: veracode-go-cli
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      # windows/arm64 ainda não é suportado pelo Go para release estável aqui
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/appsecomega/veracode-go-cli/internal/version.Version={{.Version}}
+      - -X github.com/appsecomega/veracode-go-cli/internal/version.Commit={{.Commit}}
+      - -X github.com/appsecomega/veracode-go-cli/internal/version.Date={{.Date}}
+
+archives:
+  - id: default
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    formats: [tar.gz, zip]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE*
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  use: github
+  groups:
+    - title: Features
+      regexp: '^.*feat(\(.*\))?:+.*$'
+      order: 0
+    - title: 'Bug fixes'
+      regexp: '^.*fix(\(.*\))?:+.*$'
+      order: 1
+    - title: Others
+      order: 999
+
+release:
+  github:
+    owner: appsecomega
+    name: veracode-go-cli
+  # Marcado como draft=false; mude para true se quiser revisar antes de publicar.
+  draft: false
+  prerelease: auto

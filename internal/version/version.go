@@ -35,6 +35,12 @@ func EffectiveVersion() string {
 }
 
 // Short returns a human-readable one-line version string.
+// Build metadata (commit/date) is only shown when injected via ldflags
+// (GoReleaser binaries); `go install` binaries show just the version.
 func Short() string {
-	return "veracode-go-cli " + EffectiveVersion() + " (commit " + Commit + ", built " + Date + ")"
+	v := EffectiveVersion()
+	if Commit == "none" && Date == "unknown" {
+		return "veracode-go-cli " + v
+	}
+	return "veracode-go-cli " + v + " (commit " + Commit + ", built " + Date + ")"
 }

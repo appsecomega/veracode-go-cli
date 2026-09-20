@@ -8,6 +8,7 @@ on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -30,5 +31,17 @@ jobs:
           distribution: goreleaser
           version: "~> v2"
           args: release --clean
+        if: github.ref_type == 'tag'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Disparo manual (Actions > Release > Run workflow): só valida o
+      # empacotamento, sem publicar. Para publicar, use uma tag v*.*.*.
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --snapshot --clean
+        if: github.ref_type != 'tag'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

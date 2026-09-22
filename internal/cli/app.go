@@ -80,13 +80,16 @@ func newAppGetCmd() *cobra.Command {
 
 func printApplication(cmd *cobra.Command, app *veracode.Application, format outputFormat) error {
 	analysisCenterURL := veracode.BuildAnalysisCenterURL(app.AppProfileURL)
+	latestScanURL := veracode.BuildLatestScanResultsURL(app.ResultsURL)
 
 	if format == outputJSON {
 		payload := map[string]any{
-			"application":     app.Profile.Name,
-			"app_id":          app.ID,
-			"guid":            app.GUID,
-			"analysis_center": analysisCenterURL,
+			"application":         app.Profile.Name,
+			"app_id":              app.ID,
+			"guid":                app.GUID,
+			"analysis_center":     analysisCenterURL,
+			"last_completed_scan": app.LastCompletedScanDate,
+			"latest_scan_results": latestScanURL,
 		}
 		raw, err := json.MarshalIndent(payload, "", "  ")
 		if err != nil {
@@ -102,6 +105,14 @@ func printApplication(cmd *cobra.Command, app *veracode.Application, format outp
 	_, _ = fmt.Fprintln(out, "App ID:", app.ID)
 	_, _ = fmt.Fprintln(out, "GUID:", app.GUID)
 	_, _ = fmt.Fprintln(out, "Analysis Center:", analysisCenterURL)
+	if app.LastCompletedScanDate != "" {
+		_, _ = fmt.Fprintln(out, "Last completed scan:", app.LastCompletedScanDate)
+	}
+	if latestScanURL != "" {
+		_, _ = fmt.Fprintln(out, "Latest scan results:", latestScanURL)
+	} else {
+		_, _ = fmt.Fprintln(out, "Latest scan results: (no published policy scan yet)")
+	}
 
 	return nil
 }

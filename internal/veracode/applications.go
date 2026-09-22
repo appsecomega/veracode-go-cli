@@ -57,3 +57,16 @@ func (c *Client) GetApplication(name string) (*Application, error) {
 func BuildAnalysisCenterURL(appProfileURL string) string {
 	return analysisCenterBaseURL + appProfileURL
 }
+
+// BuildLatestScanResultsURL builds the clickable deep link to the latest
+// published policy scan (Results page) in the Analysis Center UI.
+//
+// The API returns results_url as a fragment like
+// "ViewReportsResultSummary:<oid>:<app_id>:<build_id>".
+// It returns "" when the application has no published policy scan yet.
+func BuildLatestScanResultsURL(resultsURL string) string {
+	if resultsURL == "" {
+		return ""
+	}
+	return analysisCenterBaseURL + resultsURL
+}

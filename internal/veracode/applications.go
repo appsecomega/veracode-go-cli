@@ -12,7 +12,7 @@ const analysisCenterBaseURL = "https://analysiscenter.veracode.com/auth/index.js
 // GetApplication looks up exactly one application by exact name.
 // It errors when zero or more than one application matches.
 func (c *Client) GetApplication(name string) (*Application, error) {
-	endpoint, err := url.Parse(baseURL + "/appsec/v1/applications")
+	endpoint, err := url.Parse(apiBaseURL + "/appsec/v1/applications")
 	if err != nil {
 		return nil, fmt.Errorf("build API URL: %w", err)
 	}

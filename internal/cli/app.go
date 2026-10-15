@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -35,15 +36,22 @@ func newAppCmd() *cobra.Command {
 // newAppGetCmd implements: veracode-go-cli app get --name "WebGoat-Legacy-master"
 func newAppGetCmd() *cobra.Command {
 	var (
-		name   string
-		output string
+		name         string
+		output       string
+		appURLOnly   bool
+		scanURLOnly  bool
+		wait         bool
+		waitTimeout  time.Duration
+		waitInterval time.Duration
 	)
 
 	cmd := &cobra.Command{
 		Use:   "get",
 		Short: "Busca uma aplicação pelo nome exato",
 		Example: `  veracode-go-cli app get --name "WebGoat-Legacy-master"
-  veracode-go-cli app get --name "WebGoat-Legacy-master" --output json`,
+  veracode-go-cli app get --name "WebGoat-Legacy-master" --output json
+  veracode-go-cli app get --name "WebGoat-Legacy-master" --app-url
+  veracode-go-cli app get --name "WebGoat-Legacy-master" --scan-url --wait --timeout 30m`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			name = strings.TrimSpace(name)
 			if name == "" {
@@ -55,6 +63,10 @@ func newAppGetCmd() *cobra.Command {
 				return fmt.Errorf("invalid --output %q: want \"text\" or \"json\"", output)
 			}
 
+			if wait && (waitTimeout <= 0 || waitInterval <= 0) {
+				return fmt.Errorf("invalid --timeout/--interval: both must be positive durations")
+			}
+
 			credentials, err := config.Load()
 			if err != nil {
 				return err
@@ -62,9 +74,26 @@ func newAppGetCmd() *cobra.Command {
 
 			client := veracode.NewClient(credentials)
 
-			application, err := client.GetApplication(name)
+			var application *veracode.Application
+			if wait {
+				application, err = client.WaitForLatestScanResults(name, veracode.WaitOptions{
+					Interval: waitInterval,
+					Timeout:  waitTimeout,
+					Logf: func(format string, args ...any) {
+						_, _ = fmt.Fprintf(cmd.ErrOrStderr(), format+"\n", args...)
+					},
+				})
+			} else {
+				application, err = client.GetApplication(name)
+			}
 			if err != nil {
 				return err
+			}
+
+			// Bare mode: script-friendly, one URL per line on stdout.
+			// --output is ignored here by design.
+			if appURLOnly || scanURLOnly {
+				return printBareURLs(cmd, application, appURLOnly, scanURLOnly)
 			}
 
 			return printApplication(cmd, application, format)
@@ -72,10 +101,34 @@ func newAppGetCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&name, "name", "", "Veracode application name (exact match)")
-	cmd.Flags().StringVarP(&output, "output", "o", "text", "Output format: text|json")
+	cmd.Flags().StringVarP(&output, "output", "o", "text", "Output format: text|json (ignored with --app-url/--scan-url)")
+	cmd.Flags().BoolVar(&appURLOnly, "app-url", false, "Print only the Analysis Center application URL")
+	cmd.Flags().BoolVar(&scanURLOnly, "scan-url", false, "Print only the latest published scan results URL")
+	cmd.Flags().BoolVar(&wait, "wait", false, "Wait for an in-progress scan to publish before printing")
+	cmd.Flags().DurationVar(&waitTimeout, "timeout", 15*time.Minute, "Max wait with --wait (e.g. 10m, 1h); command fails instead of hanging")
+	cmd.Flags().DurationVar(&waitInterval, "interval", 30*time.Second, "Poll interval with --wait (e.g. 30s, 1m)")
 	_ = cmd.MarkFlagRequired("name")
 
 	return cmd
+}
+
+// printBareURLs prints the requested URLs, one per line, for scripting.
+func printBareURLs(cmd *cobra.Command, app *veracode.Application, wantApp, wantScan bool) error {
+	out := cmd.OutOrStdout()
+
+	if wantApp {
+		_, _ = fmt.Fprintln(out, veracode.BuildAnalysisCenterURL(app.AppProfileURL))
+	}
+
+	if wantScan {
+		scanURL := veracode.BuildLatestScanResultsURL(app.ResultsURL)
+		if scanURL == "" {
+			return fmt.Errorf("application %q has no published policy scan yet", app.Profile.Name)
+		}
+		_, _ = fmt.Fprintln(out, scanURL)
+	}
+
+	return nil
 }
 
 func printApplication(cmd *cobra.Command, app *veracode.Application, format outputFormat) error {

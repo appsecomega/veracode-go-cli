@@ -48,6 +48,15 @@ veracode-go-cli app get --name "WebGoat-Legacy-master"
 # JSON output (useful for scripting)
 veracode-go-cli app get --name "WebGoat-Legacy-master" --output json
 
+# Only the application URL / only the latest scan results URL (script-friendly)
+veracode-go-cli app get --name "WebGoat-Legacy-master" --app-url
+veracode-go-cli app get --name "WebGoat-Legacy-master" --scan-url
+
+# Wait for an in-progress scan to publish, then print its results URL.
+# Always bounded by --timeout (default 15m): the command fails instead of
+# hanging your pipeline. Progress goes to stderr, the URL to stdout.
+veracode-go-cli app get --name "WebGoat-Legacy-master" --scan-url --wait --timeout 30m
+
 # Binary version
 veracode-go-cli version
 ```

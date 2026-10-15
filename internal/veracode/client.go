@@ -10,7 +10,11 @@ import (
 	"github.com/appsecomega/veracode-go-cli/internal/config"
 )
 
-const baseURL = "https://api.veracode.com"
+// Base URLs as vars (not const) so tests can point them at a mock server.
+var (
+	apiBaseURL    = "https://api.veracode.com"
+	xmlAPIBaseURL = "https://analysiscenter.veracode.com"
+)
 
 // Client is a thin wrapper around http.Client with Veracode credentials.
 type Client struct {
@@ -37,6 +41,38 @@ func (c *Client) do(request *http.Request) ([]byte, error) {
 
 	request.Header.Set("Authorization", authHeader)
 	request.Header.Set("Accept", "application/json")
+
+	response, err := c.HTTPClient.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("execute HTTP request: %w", err)
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read API response: %w", err)
+	}
+
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf(
+			"Veracode API returned HTTP %d: %s",
+			response.StatusCode,
+			strings.TrimSpace(string(body)),
+		)
+	}
+
+	return body, nil
+}
+
+// doXML is do() for the XML Results APIs (analysiscenter host).
+func (c *Client) doXML(request *http.Request) ([]byte, error) {
+	authHeader, err := generateHMACHeader(c.Credentials.ID, c.Credentials.Secret, request)
+	if err != nil {
+		return nil, fmt.Errorf("generate HMAC authorization: %w", err)
+	}
+
+	request.Header.Set("Authorization", authHeader)
+	request.Header.Set("Accept", "application/xml")
 
 	response, err := c.HTTPClient.Do(request)
 	if err != nil {

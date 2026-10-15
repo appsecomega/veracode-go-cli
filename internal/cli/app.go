@@ -38,6 +38,7 @@ func newAppGetCmd() *cobra.Command {
 	var (
 		name         string
 		output       string
+		all          bool
 		appURLOnly   bool
 		scanURLOnly  bool
 		wait         bool
@@ -50,13 +51,11 @@ func newAppGetCmd() *cobra.Command {
 		Short: "Busca uma aplicação pelo nome exato",
 		Example: `  veracode-go-cli app get --name "WebGoat-Legacy-master"
   veracode-go-cli app get --name "WebGoat-Legacy-master" --output json
+  veracode-go-cli app get --all
   veracode-go-cli app get --name "WebGoat-Legacy-master" --app-url
   veracode-go-cli app get --name "WebGoat-Legacy-master" --scan-url --wait --timeout 30m`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			name = strings.TrimSpace(name)
-			if name == "" {
-				return fmt.Errorf("application name is required (use --name)")
-			}
 
 			format := outputFormat(strings.ToLower(strings.TrimSpace(output)))
 			if format != outputText && format != outputJSON {
@@ -73,6 +72,20 @@ func newAppGetCmd() *cobra.Command {
 			}
 
 			client := veracode.NewClient(credentials)
+
+			// List mode: one application name per line (JSON array with
+			// --output json). Ignores --name and the other display flags.
+			if all {
+				applications, err := client.ListApplications()
+				if err != nil {
+					return err
+				}
+				return printAllApplications(cmd, applications, format)
+			}
+
+			if name == "" {
+				return fmt.Errorf("application name is required (use --name) or list everything with --all")
+			}
 
 			var application *veracode.Application
 			if wait {
@@ -102,14 +115,42 @@ func newAppGetCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&name, "name", "", "Veracode application name (exact match)")
 	cmd.Flags().StringVarP(&output, "output", "o", "text", "Output format: text|json (ignored with --app-url/--scan-url)")
+	cmd.Flags().BoolVarP(&all, "all", "a", false, "List the names of all applications (ignores --name and the other display flags)")
+
 	cmd.Flags().BoolVar(&appURLOnly, "app-url", false, "Print only the Analysis Center application URL")
 	cmd.Flags().BoolVar(&scanURLOnly, "scan-url", false, "Print only the latest published scan results URL")
 	cmd.Flags().BoolVar(&wait, "wait", false, "Wait for an in-progress scan to publish before printing")
 	cmd.Flags().DurationVar(&waitTimeout, "timeout", 15*time.Minute, "Max wait with --wait (e.g. 10m, 1h); command fails instead of hanging")
 	cmd.Flags().DurationVar(&waitInterval, "interval", 30*time.Second, "Poll interval with --wait (e.g. 30s, 1m)")
-	_ = cmd.MarkFlagRequired("name")
 
 	return cmd
+}
+
+// printAllApplications prints one application name per line (a JSON array
+// with --output json), keeping stdout clean for scripting.
+func printAllApplications(cmd *cobra.Command, applications []veracode.Application, format outputFormat) error {
+	names := make([]string, 0, len(applications))
+	for _, app := range applications {
+		names = append(names, app.Profile.Name)
+	}
+
+	if format == outputJSON {
+		raw, err := json.MarshalIndent(names, "", "  ")
+		if err != nil {
+			return fmt.Errorf("encode output: %w", err)
+		}
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), string(raw))
+		return nil
+	}
+
+	if len(names) == 0 {
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "(no applications found)")
+		return nil
+	}
+	for _, name := range names {
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), name)
+	}
+	return nil
 }
 
 // printBareURLs prints the requested URLs, one per line, for scripting.

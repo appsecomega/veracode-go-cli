@@ -54,3 +54,35 @@ func TestPrintBareURLsWithoutPublishedScan(t *testing.T) {
 		t.Fatal("expected error when no scan published, got nil")
 	}
 }
+
+func TestPrintAllApplications(t *testing.T) {
+	apps := []veracode.Application{*testApp()}
+	other := testApp()
+	other.Profile.Name = "other-app"
+	apps = append(apps, *other)
+
+	cmd := &cobra.Command{}
+	var out strings.Builder
+	cmd.SetOut(&out)
+
+	if err := printAllApplications(cmd, apps, outputText); err != nil {
+		t.Fatalf("printAllApplications: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 2 || lines[0] != "WebGoat-Legacy-master" || lines[1] != "other-app" {
+		t.Errorf("got %q, want both names one per line", out.String())
+	}
+
+	cmdJSON := &cobra.Command{}
+	var outJSON strings.Builder
+	cmdJSON.SetOut(&outJSON)
+
+	if err := printAllApplications(cmdJSON, apps, outputJSON); err != nil {
+		t.Fatalf("printAllApplications json: %v", err)
+	}
+	if !strings.Contains(outJSON.String(), "WebGoat-Legacy-master") ||
+		!strings.Contains(outJSON.String(), "other-app") {
+		t.Errorf("json output = %q, want both names", outJSON.String())
+	}
+}

@@ -2,6 +2,10 @@ package veracode
 
 import (
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -92,5 +96,59 @@ func TestParseApplicationWithLatestScan(t *testing.T) {
 	link := BuildLatestScanResultsURL(app.ResultsURL)
 	if !strings.HasPrefix(link, "https://analysiscenter.veracode.com/auth/index.jsp#ViewReportsResultSummary:") {
 		t.Errorf("latest scan link = %q, want ViewReportsResultSummary deep link", link)
+	}
+}
+
+func TestListApplicationsFollowsPagination(t *testing.T) {
+	var requestedPages []string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("page")
+		requestedPages = append(requestedPages, page)
+		if got := r.URL.Query().Get("size"); got != strconv.Itoa(listPageSize) {
+			t.Errorf("size = %q, want %d", got, listPageSize)
+		}
+
+		var names []string
+		if page == "0" {
+			// Full page forces a second request.
+			for i := 0; i < listPageSize; i++ {
+				names = append(names, fmt.Sprintf("app-%03d", i))
+			}
+		} else {
+			names = []string{"WebGoat-Legacy-master"}
+		}
+
+		items := make([]string, 0, len(names))
+		for i, name := range names {
+			items = append(items, fmt.Sprintf(
+				`{"id":%d,"guid":"guid-%d","profile":{"name":%q}}`, i, i, name,
+			))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"_embedded":{"applications":[%s]}}`, strings.Join(items, ","))
+	}))
+	defer server.Close()
+
+	oldAPI := apiBaseURL
+	apiBaseURL = server.URL
+	defer func() { apiBaseURL = oldAPI }()
+
+	apps, err := NewClient(newTestCredentials()).ListApplications()
+	if err != nil {
+		t.Fatalf("ListApplications: %v", err)
+	}
+
+	if len(apps) != listPageSize+1 {
+		t.Fatalf("got %d applications, want %d", len(apps), listPageSize+1)
+	}
+	if apps[0].Profile.Name != "app-000" {
+		t.Errorf("first app = %q, want app-000", apps[0].Profile.Name)
+	}
+	if apps[len(apps)-1].Profile.Name != testAppName {
+		t.Errorf("last app = %q, want %q", apps[len(apps)-1].Profile.Name, testAppName)
+	}
+	if len(requestedPages) != 2 || requestedPages[0] != "0" || requestedPages[1] != "1" {
+		t.Errorf("requested pages = %v, want [0 1]", requestedPages)
 	}
 }

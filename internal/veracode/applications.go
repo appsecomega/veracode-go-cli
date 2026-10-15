@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 )
 
 const analysisCenterBaseURL = "https://analysiscenter.veracode.com/auth/index.jsp#"
@@ -50,6 +51,51 @@ func (c *Client) GetApplication(name string) (*Application, error) {
 	}
 
 	return &applications[0], nil
+}
+
+// listPageSize is the page size used when listing all applications
+// (API max is 500).
+const listPageSize = 100
+
+// ListApplications returns every application in the portfolio, following
+// the API pagination automatically.
+func (c *Client) ListApplications() ([]Application, error) {
+	var all []Application
+
+	for page := 0; ; page++ {
+		endpoint, err := url.Parse(apiBaseURL + "/appsec/v1/applications")
+		if err != nil {
+			return nil, fmt.Errorf("build API URL: %w", err)
+		}
+
+		query := endpoint.Query()
+		query.Set("page", strconv.Itoa(page))
+		query.Set("size", strconv.Itoa(listPageSize))
+		endpoint.RawQuery = query.Encode()
+
+		request, err := http.NewRequest(http.MethodGet, endpoint.String(), nil)
+		if err != nil {
+			return nil, fmt.Errorf("create HTTP request: %w", err)
+		}
+
+		body, err := c.do(request)
+		if err != nil {
+			return nil, err
+		}
+
+		var result ApplicationsResponse
+		if err := json.Unmarshal(body, &result); err != nil {
+			return nil, fmt.Errorf("parse API response: %w", err)
+		}
+
+		all = append(all, result.Embedded.Applications...)
+
+		if len(result.Embedded.Applications) < listPageSize {
+			break
+		}
+	}
+
+	return all, nil
 }
 
 // BuildAnalysisCenterURL builds the deep link to the app profile
